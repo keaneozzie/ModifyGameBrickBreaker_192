@@ -161,3 +161,56 @@ class Paddle(GameObject):
         self.game_app.spawn_powerup(cx, cy)
     else:
       self.canvas.itemconfig(self.item, fill=Brick.COLORS[self.hits])
+    
+class Ghost(GameObject):
+  """Animasi Hantu Melayang di Latar Belakang"""
+
+  def __init__(self, canvas, x, y):
+    self.direction = random.choice([-2, 2])
+    head = canvas.create_oval(
+        x - 20, y - 30, x + 20, y + 10, fill="#1a1a1a", outline="#ff0000", width=1
+    )
+    body = canvas.create_rectangle(
+        x - 20, y, x + 20, y + 35, fill="#1a1a1a", outline="#ff0000", width=1
+    )
+    eye1 = canvas.create_oval(
+        x - 10, y - 15, x - 5, y - 10, fill="#ff0000", outline=""
+    )
+    eye2 = canvas.create_oval(
+        x + 5, y - 15, x + 10, y - 10, fill="#ff0000", outline=""
+    )
+
+    self.items_group = [head, body, eye1, eye2]
+    super(Ghost, self).__init__(canvas, head)
+
+  def update(self):
+    width = self.canvas.winfo_width()
+    coords = self.canvas.coords(self.item)
+    if not coords:
+      return
+
+    if coords[0] <= 30 or coords[2] >= width - 30:
+      self.direction *= -1
+
+    for item in self.items_group:
+      self.canvas.move(item, self.direction, 0)
+
+  def delete(self):
+    for item in self.items_group:
+      try:
+        self.canvas.delete(item)
+      except Exception:
+        pass
+
+
+class Particle(GameObject):
+
+  def __init__(self, canvas, x, y):
+    self.dx = random.uniform(-4, 4)
+    self.dy = random.uniform(-6, -1)
+    item = canvas.create_rectangle(x, y, x + 4, y + 4, fill="#ff0000", outline="")
+    super(Particle, self).__init__(canvas, item)
+
+  def update(self):
+    self.move(self.dx, self.dy)
+    self.dy += 0.5
