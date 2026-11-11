@@ -214,3 +214,232 @@ class Particle(GameObject):
   def update(self):
     self.move(self.dx, self.dy)
     self.dy += 0.5
+
+class PowerUp(GameObject):
+
+  def __init__(self, canvas, x, y):
+    self.radius = 10
+    item = canvas.create_oval(
+        x - self.radius,
+        y - self.radius,
+        x + self.radius,
+        y + self.radius,
+        fill="#00ff66",
+        outline="#ffffff",
+        tags="powerup",
+    )
+    super(PowerUp, self).__init__(canvas, item)
+
+  def update(self):
+    self.move(0, 6)
+
+
+class Game(tk.Frame):
+
+  def __init__(self, master):
+    super(Game, self).__init__(master)
+    self.master = master
+
+    self.width = master.winfo_screenwidth()
+    self.height = master.winfo_screenheight()
+
+    self.lives = 3
+    self.score = 0
+
+    self.canvas = tk.Canvas(
+        self, bg="#030303", width=self.width, height=self.height, highlightthickness=0
+    )
+    self.canvas.pack(fill=tk.BOTH, expand=True)
+    self.pack(fill=tk.BOTH, expand=True)
+
+    self.items = {}
+    self.ball = None
+    self.powerups = []
+    self.particles = []
+    self.ghosts = []
+
+    self.paddle = Paddle(self.canvas, self.width / 2, self.height - 80)
+    self.items[self.paddle.item] = self.paddle
+
+    self.build_level()
+    self.spawn_ghosts()
+
+    self.hud_lives = None
+    self.hud_score = None
+    self.setup_game()
+    self.canvas.focus_set()
+
+    self.pressed_keys = set()
+    self.canvas.bind("<KeyPress>", self.on_key_press)
+    self.canvas.bind("<KeyRelease>", self.on_key_release)
+    self.canvas.bind("<Motion>", self.on_mouse_motion)
+
+    master.bind("<Escape>", lambda event: master.attributes("-fullscreen", False))
+
+    self.handle_continuous_movement()
+
+  def spawn_ghosts(self):
+    for x_pos in [150, self.width / 2, self.width - 150]:
+      ghost = Ghost(self.canvas, x_pos, 230)
+      self.ghosts.append(ghost)
+
+  def on_key_press(self, event):
+    self.pressed_keys.add(event.keysym)
+
+  def on_key_release(self, event):
+    if event.keysym in self.pressed_keys:
+      self.pressed_keys.remove(event.keysym)
+
+  def on_mouse_motion(self, event):
+    self.paddle.set_position(event.x)
+
+  def handle_continuous_movement(self):
+    speed = 16
+    if "Left" in self.pressed_keys or "a" in self.pressed_keys or "A" in self.pressed_keys:
+      self.paddle.move(-speed)
+    if "Right" in self.pressed_keys or "d" in self.pressed_keys or "D" in self.pressed_keys:
+      self.paddle.move(speed)
+
+    self.master.after(20, self.handle_continuous_movement)
+
+  def build_level(self):
+    start_x = 70
+    spacing = 90
+    for x in range(start_x, self.width - start_x, spacing):
+      self.add_brick(x, 90, 3)
+      self.add_brick(x, 120, 2)
+      self.add_brick(x, 150, 1)
+
+  def setup_game(self):
+    self.add_ball()
+    self.update_hud()
+    self.text = self.draw_text(
+        self.width / 2, self.height / 2 - 40, "▶ TEKAN SPASI UNTUK BERTAHAN ◀", "#ff0000", 28
+    )
+    self.canvas.bind("<space>", lambda _: self.start_game())
+
+  def add_ball(self):
+    if self.ball is not None:
+      self.ball.delete()
+    paddle_coords = self.paddle.get_position()
+    x = (paddle_coords[0] + paddle_coords[2]) * 0.5
+    self.ball = Ball(self.canvas, x, self.height - 110)
+    self.paddle.set_ball(self.ball)
+
+  def add_brick(self, x, y, hits):
+    brick = Brick(self.canvas, x, y, hits, self)
+    self.items[brick.item] = brick
+
+  def spawn_powerup(self, x, y):
+    p = PowerUp(self.canvas, x, y)
+    self.powerups.append(p)
+
+  def spawn_particles(self, x, y):
+    for _ in range(5):
+      p = Particle(self.canvas, x, y)
+      self.particles.append(p)
+
+  def draw_text(self, x, y, text, color="#ff0000", size=24):
+    font = ("Courier New", size, "bold")
+    return self.canvas.create_text(
+        x, y, text=text, font=font, fill=color, anchor="center"
+    )
+
+  def update_hud(self):
+    lives_str = f"NYAWA: {self.lives}"
+    score_str = f"SKOR: {self.score}"
+    if self.hud_lives is None:
+      self.hud_lives = self.canvas.create_text(
+          90, 30, text=lives_str, fill="#ff0000", font=("Courier New", 14, "bold")
+      )
+      self.hud_score = self.canvas.create_text(
+          self.width - 100,
+          30,
+          text=score_str,
+          fill="#00ffcc",
+          font=("Courier New", 14, "bold"),
+      )
+    else:
+      self.canvas.itemconfig(self.hud_lives, text=lives_str)
+      self.canvas.itemconfig(self.hud_score, text=score_str)
+
+  def update_score_text(self):
+    self.canvas.itemconfig(self.hud_score, text=f"SKOR: {self.score}")
+
+  def start_game(self):
+    self.canvas.unbind("<space>")
+    self.canvas.delete(self.text)
+    self.paddle.ball = None
+    self.game_loop()
+
+  def trigger_jump_scare_flash(self):
+    self.canvas.config(bg="#4a0000")
+    self.master.after(120, lambda: self.canvas.config(bg="#1a0000"))
+    self.master.after(240, lambda: self.canvas.config(bg="#030303"))
+
+  def game_loop(self):
+    self.check_collisions()
+
+    for ghost in self.ghosts:
+      ghost.update()
+
+    for p in self.particles[:]:
+      p.update()
+      coords = p.get_position()
+      if not coords or coords[3] >= self.height:
+        p.delete()
+        self.particles.remove(p)
+
+    for p in self.powerups[:]:
+      p.update()
+      p_coords = p.get_position()
+      paddle_coords = self.paddle.get_position()
+      if (
+          p_coords
+          and paddle_coords
+          and p_coords[2] >= paddle_coords[0]
+          and p_coords[0] <= paddle_coords[2]
+          and p_coords[3] >= paddle_coords[1]
+      ):
+        self.paddle.widen()
+        p.delete()
+        self.powerups.remove(p)
+      elif p_coords and p_coords[3] >= self.height:
+        p.delete()
+        self.powerups.remove(p)
+
+    num_bricks = len(self.canvas.find_withtag("brick"))
+    if num_bricks == 0:
+      self.ball.speed = None
+      self.draw_text(
+          self.width / 2, self.height / 2 - 40, "💀 SELAMAT... KAU BERTAHAN! 💀", "#00ff66", 35
+      )
+    elif self.ball.get_position()[3] >= self.height:
+      self.ball.speed = None
+      self.lives -= 1
+      self.trigger_jump_scare_flash()
+      self.update_hud()
+      if self.lives < 0:
+        self.draw_text(
+            self.width / 2, self.height / 2 - 40, "☠ GAME OVER - DIA MENGAMBILMU ☠", "#ff0000", 40
+        )
+      else:
+        self.after(1200, self.setup_game)
+    else:
+      self.ball.update()
+      self.after(22, self.game_loop)
+
+  def check_collisions(self):
+    ball_coords = self.ball.get_position()
+    items = self.canvas.find_overlapping(*ball_coords)
+    objects = [self.items[x] for x in items if x in self.items]
+    self.ball.collide(objects)
+
+
+if __name__ == "__main__":
+  root = tk.Tk()
+  root.title("Horror Ghost Brick Breaker")
+  root.attributes("-fullscreen", True)
+
+  game = Game(root)
+  game.mainloop()
